@@ -15,7 +15,7 @@
 
 - 👨‍💻 All of my projects are available at [https://github.com/sarguna01](https://github.com/sarguna01)
 
-- 💬 Ask me about **Devops**
+- 💬 Ask me about **DevOps**
 
 - 📫 How to reach me **sargunapandiyan152000@gmail.com**
 </p>
