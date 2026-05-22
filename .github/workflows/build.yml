@@ -1,4 +1,4 @@
-name: runnertesting
+name: PAP Build Deploy
 
 on:
   workflow_dispatch:
