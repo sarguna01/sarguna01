@@ -2,11 +2,15 @@ name: Build Deploy
 
 on:
   workflow_dispatch:
-    inputs:
+    inputs: #input means values you give while triggering the workflow
       branch:
-        description: Branch to checkout
-        required: true
-        default: main
+        description: Branch to checkout #This name will be poped up in UI
+        required: true #means that input is mandatory when you manually run the workflow.
+        default: main #default option is main branch only
+        options:
+          - develop
+          - stage
+          - main
       operation:
         description: Operation to run
         required: true
