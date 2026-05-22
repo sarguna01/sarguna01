@@ -1,0 +1,6 @@
+-name: runnertesting
+
+on: push
+
+jobs: 
+ runs-on: self-hosted
