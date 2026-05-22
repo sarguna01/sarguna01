@@ -6,6 +6,7 @@ on:
       branch:
         description: Branch to checkout #This name will be poped up in UI
         required: true #means that input is mandatory when you manually run the workflow.
+        type: choice
         default: main #default option is main branch only
         options:
           - develop
