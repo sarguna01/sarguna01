@@ -1,7 +1,40 @@
-name: PAP Build Deploy
+name: Build Deploy
 
-on: 
+on:
   workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to checkout
+        required: true
+        default: main
+      operation:
+        description: Operation to run
+        required: true
+        type: choice
+        default: build-deploy
+        options:
+          - build-deploy
+          - route-blue
+          - route-green
+          - delete-blue
+          - delete-green
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - stg
+          - prod
+      image_tag:
+        description: Docker tag override
+        required: false
+      dry_run:
+        description: Run validation only
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   sarguna:
@@ -9,4 +42,10 @@ jobs:
     runs-on: self-hosted
     steps:
       - name: Test runner
-        run: echo "Manual run started on self-hosted runner"
+        run: |
+          echo "Manual run started on self-hosted runner"
+          echo "branch=${{ inputs.branch }}"
+          echo "operation=${{ inputs.operation }}"
+          echo "environment=${{ inputs.environment }}"
+          echo "image_tag=${{ inputs.image_tag }}"
+          echo "dry_run=${{ inputs.dry_run }}"
