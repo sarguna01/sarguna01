@@ -1,4 +1,5 @@
-name: PAP Build Deploy
+name: PAP Build Deploy #It appears in the GitHub Actions UI as the workflow name, It helps humans identify this workflow among many workflows.
+
 
 on:
   workflow_dispatch:
@@ -9,4 +10,4 @@ jobs:
     runs-on: self-hosted
     steps:
       - name: Test runner
-        run: echo "Manual run started on self-hosted runner"
+        run: echo "Manual sarguna self-hosted runner"
