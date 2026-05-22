@@ -1,8 +1,12 @@
--name: runnertesting
+name: runnertesting
 
-on: 
+on:
   workflow_dispatch:
 
-jobs: 
- runs-on: self-hosted
- sarguna
+jobs:
+  sarguna:
+    name: runnertesting
+    runs-on: self-hosted
+    steps:
+      - name: Test runner
+        run: echo "Manual run started on self-hosted runner"
