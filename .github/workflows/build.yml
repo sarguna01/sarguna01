@@ -1,7 +1,7 @@
 name: PAP Build Deploy
 
-on: push
-  
+on: 
+  workflow_dispatch:
 
 jobs:
   sarguna:
