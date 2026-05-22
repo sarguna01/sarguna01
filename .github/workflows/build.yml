@@ -6,51 +6,83 @@ on:
       branch:
         description: Branch to checkout #This name will be poped up in UI
         required: true #means that input is mandatory when you manually run the workflow.
-        type: choice
+        type: choice   #to choose option we need add type: choice
         default: main #default option is main branch only
         options:
           - develop
           - stage
           - main
-      operation:
-        description: Operation to run
+      region:
+        description: Deployment region
         required: true
         type: choice
-        default: build-deploy
+        default: hillsboro
         options:
-          - build-deploy
-          - route-blue
-          - route-green
-          - delete-blue
-          - delete-green
-      environment:
-        description: Target environment
-        required: true
-        type: choice
-        default: dev
-        options:
-          - dev
-          - stg
-          - prod
-      image_tag:
-        description: Docker tag override
-        required: false
-      dry_run:
-        description: Run validation only
-        required: false
-        type: boolean
-        default: false
+          - hillsboro
+          - ashbhun
 
 jobs:
   sarguna:
     name: runnertesting
     runs-on: self-hosted
+    env:
+      IS_CCP_F5_BIGIP: "false"
     steps:
-      - name: Test runner
+      - name: Resolve values from branch and region
+        shell: bash
         run: |
-          echo "Manual run started on self-hosted runner"
-          echo "branch=${{ inputs.branch }}"
-          echo "operation=${{ inputs.operation }}"
-          echo "environment=${{ inputs.environment }}"
-          echo "image_tag=${{ inputs.image_tag }}"
-          echo "dry_run=${{ inputs.dry_run }}"
+          set -euo pipefail
+
+          BRANCH="${{ inputs.branch }}"
+          REGION_INPUT="${{ inputs.region }}"
+
+          if [[ "$BRANCH" == "develop" && "$REGION_INPUT" == "hillsboro" ]]; then
+            ENVIRONMENT="dev"
+            CRED_ENV="stg"
+            RDEI_ENVIRONMENT="dev"
+            REGION="hillsboro"
+            RDEI_SERVER="https://hillsboro"
+            CLUSTER="hillsboro-dev"
+          elif [[ "$BRANCH" == "develop" && "$REGION_INPUT" == "ashburn" ]]; then
+            ENVIRONMENT="dev"
+            CRED_ENV="dev"
+            RDEI_ENVIRONMENT="-dev"
+            REGION="ashburn"
+            RDEI_SERVER="https://ashburn"
+            CLUSTER="ashburn-dev"
+          elif [[ "$BRANCH" == "stage" && "$REGION_INPUT" == "hillsboro" ]]; then
+            ENVIRONMENT="dev"
+            CRED_ENV="stg"
+            RDEI_ENVIRONMENT="dev"
+            REGION="hillsboro"
+            RDEI_SERVER="https://hillsboro"
+            CLUSTER="hillsboro-dev"
+          elif [[ "$BRANCH" == "stage" && "$REGION_INPUT" == "ashburn" ]]; then
+            ENVIRONMENT="stg"
+            CRED_ENV="stg"
+            RDEI_ENVIRONMENT="stg"
+            REGION="ashburn"
+            RDEI_SERVER="https://ashburn"
+            CLUSTER="ashburn-dev-stg"
+          elif [[ "$BRANCH" == "main" && "$REGION_INPUT" == "hillsboro" ]]; then
+            ENVIRONMENT="prod"
+            CRED_ENV="prod"
+            RDEI_ENVIRONMENT="prod"
+            REGION="hillsboro"
+            RDEI_SERVER="https://hillsboro"
+            CLUSTER="hillsboro-dev"
+          elif [[ "$BRANCH" == "main" && "$REGION_INPUT" == "ashburn" ]]; then
+            ENVIRONMENT="prod"
+            CRED_ENV="prod"
+            RDEI_ENVIRONMENT="prod"
+            REGION="ashburn"
+            RDEI_SERVER="https://ashburn"
+            CLUSTER="ashburn-dev-stg"
+          else
+            echo "Unsupported branch/region combination: $BRANCH / $REGION_INPUT"
+            echo "Allowed combinations:"
+            echo "  develop + hillsboro|ashburn"
+            echo "  stage + hillsboro|ashburn"
+            echo "  main + hillsboro|ashburn"
+            exit 1
+          fi
