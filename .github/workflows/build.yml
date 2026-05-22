@@ -1,6 +1,7 @@
 -name: runnertesting
 
-on: push
+on: 
+  workflow_dispatch:
 
 jobs: 
  runs-on: self-hosted
