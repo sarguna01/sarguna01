@@ -116,7 +116,6 @@ jobs:
           echo "PDP_REPO=$PDP_REPO" >> "$GITHUB_ENV"
           echo "RDEI_NAMESPACE=$RDEI_NAMESPACE" >> "$GITHUB_ENV"
           echo "GSLB_DNS=$GSLB_DNS" >> "$GITHUB_ENV"
-    steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
