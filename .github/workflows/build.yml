@@ -54,17 +54,6 @@ jobs:
 
           BRANCH="${{ github.event.client_payload.branch || inputs.branch || github.ref_name }}" #github.ref_name usually if repo_dispatch is not provided branch input, then it will take branch as workflow_dispatch input, as develop branch
           REGION_INPUT="${{ github.event.client_payload.region || inputs.region || 'hillsboro' }}"   #if repo_dispatch is not provided region input, then it will take region as workflow_dispatch input, as hillsboro 
-          TAG_INPUT="${{ inputs.tag }}"
-          SOURCE_REF="$BRANCH"
-
-          # Tag is allowed only for main branch.
-          if [[ -n "$TAG_INPUT" && "$BRANCH" != "main" ]]; then
-            echo "Tag deployment is allowed only with branch=main."
-            exit 1
-          fi
-          if [[ "$BRANCH" == "main" && -n "$TAG_INPUT" ]]; then
-            SOURCE_REF="$TAG_INPUT"
-          fi
 
           if [[ "$BRANCH" == "develop" && "$REGION_INPUT" == "hillsboro" ]]; then
             ENVIRONMENT="dev"
