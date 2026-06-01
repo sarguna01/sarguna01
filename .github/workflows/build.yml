@@ -126,12 +126,12 @@ jobs:
           distribution: temurin
           java-version: '17'
       
-      - name: Setup Node.js
-        if: ${{ github.event_name == 'repository_dispatch' || inputs.operation == 'build-deploy' }}
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: package.json
-          cache: npm
+      # - name: Setup Node.js
+      #   if: ${{ github.event_name == 'repository_dispatch' || inputs.operation == 'build-deploy' }}
+      #   uses: actions/setup-node@v6
+      #   with:
+      #     node-version-file: package.json
+      #     cache: npm
       
       - name: Build jar
         if: ${{ github.event_name == 'repository_dispatch' || inputs.operation == 'build-deploy' }}
