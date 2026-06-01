@@ -20,6 +20,11 @@ on:
         options:
           - hillsboro
           - ashburn
+      tag:
+        description: Optional release tag (example: v1.2.3). Use only with branch=main. #if you provide a tag then branch must be main.
+        required: false
+        type: string
+        default: ''
       operation:
         description: Operation to run
         required: true
@@ -35,17 +40,15 @@ on:
     types: [pap-build-deploy]
 
 env:
-  SLACK_CHANNEL: xap-slack-notifications
+  SLACK_CHANNEL: xap-slack-notifications #Slack steps can use ${SLACK_CHANNEL} instead of hardcoding channel name multiple times. if channel changes, update once in one place
 
 jobs:
   sarguna:
     name: runnertesting
     if: >-
       github.event_name == 'repository_dispatch' ||
-      (github.event_name == 'workflow_dispatch' && inputs.operation == 'build-deploy')    
-    runs-on: self-hosted
-    environment:
-      name: ${{ (inputs.branch || github.ref_name) == 'main' && 'production' || 'nonprod' }}    
+      github.event_name == 'workflow_dispatch'
+    runs-on: self-hosted 
     env:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
     steps:
@@ -54,8 +57,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          BRANCH="${{ inputs.branch }}"
-          REGION_INPUT="${{ inputs.region }}"
+          BRANCH="${{ github.event.client_payload.branch || inputs.branch || github.ref_name }}" #github.ref_name usually if repo_dispatch is not provided branch input, then it will take branch as workflow_dispatch input, as develop branch
+          REGION_INPUT="${{ github.event.client_payload.region || inputs.region || 'hillsboro' }}"   #if repo_dispatch is not provided region input, then it will take region as workflow_dispatch input, as hillsboro 
+          TAG_INPUT="${{ inputs.tag }}"
+          SOURCE_REF="$BRANCH"
+
+          # Tag is allowed only for main branch.
+          if [[ -n "$TAG_INPUT" && "$BRANCH" != "main" ]]; then
+            echo "Tag deployment is allowed only with branch=main."
+            exit 1
+          fi
+          if [[ "$BRANCH" == "main" && -n "$TAG_INPUT" ]]; then
+            SOURCE_REF="$TAG_INPUT"
+          fi
 
           if [[ "$BRANCH" == "develop" && "$REGION_INPUT" == "hillsboro" ]]; then
             ENVIRONMENT="dev"
@@ -85,20 +99,20 @@ jobs:
             REGION="ashburn"
             RDEI_SERVER="https://ashburn"
             CLUSTER="ashburn-dev-stg"
-          elif [[ "$BRANCH" == "main" && "$REGION_INPUT" == "hillsboro" ]]; then
+          elif [[ "$BRANCH" == "main" && "$REGION_INPUT" == "hillsboro" && -n "$TAG_INPUT" ]]; then
             ENVIRONMENT="prod"
             CRED_ENV="prod"
             RDEI_ENVIRONMENT="prod"
             REGION="hillsboro"
             RDEI_SERVER="https://hillsboro"
             CLUSTER="hillsboro-prod"
-          elif [[ "$BRANCH" == "main" && "$REGION_INPUT" == "ashburn" ]]; then
+          elif [[ "$BRANCH" == "main" && "$REGION_INPUT" == "ashburn" && -n "$TAG_INPUT" ]]; then
             ENVIRONMENT="prod"
             CRED_ENV="prod"
             RDEI_ENVIRONMENT="prod"
             REGION="ashburn"
             RDEI_SERVER="https://ashburn"
-            CLUSTER="ashburn-dev-stg"
+            CLUSTER="ashburn-prod"
           else
             echo "Unsupported branch/region combination: $BRANCH / $REGION_INPUT"
             echo "Allowed combinations:"
@@ -108,33 +122,39 @@ jobs:
             exit 1
           fi
 
-          echo "PIPELINE_NAME=$PIPELINE_NAME" >> "$GITHUB_ENV"
+          echo "RDEI_SERVER=$RDEI_SERVER" >> "$GITHUB_ENV" #In GitHub Actions, each run step starts in a fresh shell. So variables like, CLUSTER, REGION, etc. would normally disappear after that step finishes. GITHUB_ENV is a special file path provided by GitHub Actions. So later steps can use these values directly, like PIPELINE_NAME in your make and fly commands.
           echo "CLUSTER=$CLUSTER" >> "$GITHUB_ENV"
           echo "REGION=$REGION" >> "$GITHUB_ENV"
-          echo "RDEI_SERVER=$RDEI_SERVER" >> "$GITHUB_ENV"
           echo "ENVIRONMENT=$ENVIRONMENT" >> "$GITHUB_ENV"
           echo "CRED_ENV=$CRED_ENV" >> "$GITHUB_ENV"
           echo "RDEI_ENVIRONMENT=$RDEI_ENVIRONMENT" >> "$GITHUB_ENV"
           echo "PDP_REPO=$PDP_REPO" >> "$GITHUB_ENV"
           echo "RDEI_NAMESPACE=$RDEI_NAMESPACE" >> "$GITHUB_ENV"
           echo "GSLB_DNS=$GSLB_DNS" >> "$GITHUB_ENV"
+          echo "SOURCE_REF=$SOURCE_REF" >> "$GITHUB_ENV"
+
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.branch || github.ref_name }}      
+          ref: ${{ github.event.client_payload.branch || inputs.branch || github.ref_name }}
       
       - name: Setup Java 17  
+        if: ${{ github.event_name == 'repository_dispatch' || inputs.operation == 'build-deploy' }}
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
       
       - name: Setup Node.js
+        if: ${{ github.event_name == 'repository_dispatch' || inputs.operation == 'build-deploy' }}
         uses: actions/setup-node@v6
         with:
           node-version-file: package.json
           cache: npm
+      
       - name: Build jar
+        if: ${{ github.event_name == 'repository_dispatch' || inputs.operation == 'build-deploy' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -142,39 +162,90 @@ jobs:
           mkdir -p nginx src/main/resources
           ./mvnw -Pprod clean verify
 
-          
-      - name: Run deploy with auto-selected values
+      - name: Docker login
+        if: ${{ github.event_name == 'repository_dispatch' || inputs.operation == 'build-deploy' }}
         shell: bash
         run: |
           set -euo pipefail
-          echo "branch=${{ inputs.branch }}"
-          echo "region=${{ inputs.region }}"
-          echo "environment=$ENVIRONMENT"
-          echo "pipeline_name=$PIPELINE_NAME"
-          echo "cluster=$CLUSTER"
-          make create-pap-build-deploy \
-            PIPELINE_NAME="$PIPELINE_NAME" \
-            CLUSTER="$CLUSTER" \
-            ENVIRONMENT="$ENVIRONMENT" \
-            CRED_ENV="$CRED_ENV" \
-            RDEI_ENVIRONMENT="$RDEI_ENVIRONMENT" \
-            GITHUB_BRANCH="${{ inputs.branch }}" \
-            IS_CCP_F5_BIGIP="$IS_CCP_F5_BIGIP" \
-            PDP_REPO="$PDP_REPO" \
-            RDEI_NAMESPACE="$RDEI_NAMESPACE" \
-            REGION="$REGION" \
-            GSLB_DNS="$GSLB_DNS" \
-            RDEI_SERVER="$RDEI_SERVER"
+          echo "$SERVICE_ACCOUNT_PASSWORD" | docker login dockerhub.comcast.net -u "$SERVICE_ACCOUNT_USERNAME" --password-stdin
+
+      - name: Build and push image
+        if: ${{ github.event_name == 'repository_dispatch' || inputs.operation == 'build-deploy' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="${{ inputs.branch || github.ref_name }}"
+          IMAGE="dockerhub.comcast.net/namespace(svc)/xap-pap-${ENVIRONMENT}"
+          docker build -t "${IMAGE}:${BRANCH_NAME}" .
+          docker tag "${IMAGE}:${BRANCH_NAME}" "${IMAGE}:latest"
+          docker push "${IMAGE}:${BRANCH_NAME}"
+          docker push "${IMAGE}:latest"
+
+      - name: Install kubectl
+        if: ${{ github.event_name == 'repository_dispatch' || inputs.operation == 'build-deploy' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x ./kubectl
+          sudo mv ./kubectl /usr/local/bin/kubectl
+
+      - name: Configure kube context
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl config set-cluster "$CLUSTER" --server="$RDEI_SERVER" --insecure-skip-tls-verify=true
+          kubectl config set-credentials "$CLUSTER" --token="$RDEI_K8S_TOKEN"
+          kubectl config set-context "$CLUSTER" --cluster="$CLUSTER" --namespace="$RDEI_NAMESPACE" --user="$CLUSTER"
+          kubectl config use-context "$CLUSTER"
+
+      - name: Prepare deployment manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output-dir
+          current_value=$(kubectl describe svc "xap-pap-${ENVIRONMENT}-clusterip" | grep -i selector | awk '{print $2}' | cut -d'=' -f2 | cut -d'-' -f3)
+          if [ "$current_value" = "green" ]; then
+            new_value="blue"
+          elif [ "$current_value" = "blue" ]; then
+            new_value="green"
+          else
+            echo "Unexpected value: $current_value"
+            exit 1
+          fi
+
+          echo "DEPLOYMENT: ${new_value}" > output-dir/deploy.txt
+          echo "PIPELINE: ${GITHUB_WORKFLOW}" >> output-dir/deploy.txt
+          echo "JOB: build-deploy-xap-pap" >> output-dir/deploy.txt
+          echo "BRANCH: ${{ inputs.branch || github.ref_name }}" >> output-dir/deploy.txt
+          echo "DOCKER-TAG: ${{ inputs.branch || github.ref_name }}" >> output-dir/deploy.txt
+
+          cp kubernetes/xap-pap-deployment.yml kubernetes/xap-pap-deployment.generated.yml
+          mongo_uri="mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@${MONGO_HOST_URL}"
+          sed -i "s|ENVIRONMENT|${ENVIRONMENT}|g" kubernetes/xap-pap-deployment.generated.yml
+          sed -i "s|DEPLOYMENT|${new_value}|g" kubernetes/xap-pap-deployment.generated.yml
+          sed -i "s|JWK-ENV|${JWK_ENV_URL}|g" kubernetes/xap-pap-deployment.generated.yml
+
+
+          kubectl delete deployment "xap-pap-${new_value}-${ENVIRONMENT}" --ignore-not-found=true
+
+      - name: Apply deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply -f kubernetes/xap-pap-deployment.generated.yml
+          kubectl wait --for=condition=available deployment -l "app in (xap-pap-blue-${ENVIRONMENT},xap-pap-green-${ENVIRONMENT})" --timeout=240s
 
       - name: Slack success notification
         if: success()
         shell: bash
         run: |
           set -euo pipefail
+          msg=$(tr '\n' '\\n' < output-dir/deploy.txt)
           curl -sS -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
             -H 'Content-type: application/json; charset=utf-8' \
-            --data "{\"channel\":\"${SLACK_CHANNEL}\",\"text\":\"Build deploy succeeded for branch ${{ inputs.branch }} in region ${{ inputs.region }}. Pipeline: ${PIPELINE_NAME}.\"}"
+            --data "{\"channel\":\"${SLACK_CHANNEL}\",\"text\":\"${msg}\"}"
 
       - name: Slack failure notification
         if: failure()
@@ -184,4 +255,116 @@ jobs:
           curl -sS -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
             -H 'Content-type: application/json; charset=utf-8' \
-            --data "{\"channel\":\"${SLACK_CHANNEL}\",\"text\":\"Build deploy failed for branch ${{ inputs.branch }} in region ${{ inputs.region }}. Run: ${GITHUB_RUN_ID}.\"}"
+            --data "{\"channel\":\"${SLACK_CHANNEL}\",\"text\":\"PAP build deploy failed for ${GITHUB_REPOSITORY} run ${GITHUB_RUN_ID}.\"}"
+
+  route-blue:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'route-blue'
+    runs-on: comcast-ubuntu-latest
+    env:
+      RDEI_SERVER: ${{ vars.RDEI_SERVER }}
+      RDEI_NAMESPACE: ${{ vars.RDEI_NAMESPACE }}
+      CLUSTER: ${{ vars.CLUSTER }}
+      ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+      RDEI_K8S_TOKEN: ${{ secrets.RDEI_K8S_TOKEN }}
+    steps:
+      - name: Install and configure kubectl
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x ./kubectl
+          sudo mv ./kubectl /usr/local/bin/kubectl
+          kubectl config set-cluster "$CLUSTER" --server="$RDEI_SERVER" --insecure-skip-tls-verify=true
+          kubectl config set-credentials "$CLUSTER" --token="$RDEI_K8S_TOKEN"
+          kubectl config set-context "$CLUSTER" --cluster="$CLUSTER" --namespace="$RDEI_NAMESPACE" --user="$CLUSTER"
+          kubectl config use-context "$CLUSTER"
+      - name: Route service to blue
+        run: kubectl patch svc "xap-pap-${ENVIRONMENT}-clusterip" -p '{"spec":{"selector":{"app":"xap-pap-blue-'"${ENVIRONMENT}"'"}}}'
+
+  route-green:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'route-green'
+    runs-on: comcast-ubuntu-latest
+    env:
+      RDEI_SERVER: ${{ vars.RDEI_SERVER }}
+      RDEI_NAMESPACE: ${{ vars.RDEI_NAMESPACE }}
+      CLUSTER: ${{ vars.CLUSTER }}
+      ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+      RDEI_K8S_TOKEN: ${{ secrets.RDEI_K8S_TOKEN }}
+    steps:
+      - name: Install and configure kubectl
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x ./kubectl
+          sudo mv ./kubectl /usr/local/bin/kubectl
+          kubectl config set-cluster "$CLUSTER" --server="$RDEI_SERVER" --insecure-skip-tls-verify=true
+          kubectl config set-credentials "$CLUSTER" --token="$RDEI_K8S_TOKEN"
+          kubectl config set-context "$CLUSTER" --cluster="$CLUSTER" --namespace="$RDEI_NAMESPACE" --user="$CLUSTER"
+          kubectl config use-context "$CLUSTER"
+      - name: Route service to green
+        run: kubectl patch svc "xap-pap-${ENVIRONMENT}-clusterip" -p '{"spec":{"selector":{"app":"xap-pap-green-'"${ENVIRONMENT}"'"}}}'
+
+  delete-blue:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'delete-blue'
+    runs-on: comcast-ubuntu-latest
+    env:
+      RDEI_SERVER: ${{ vars.RDEI_SERVER }}
+      RDEI_NAMESPACE: ${{ vars.RDEI_NAMESPACE }}
+      CLUSTER: ${{ vars.CLUSTER }}
+      ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+      RDEI_K8S_TOKEN: ${{ secrets.RDEI_K8S_TOKEN }}
+    steps:
+      - name: Install and configure kubectl
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x ./kubectl
+          sudo mv ./kubectl /usr/local/bin/kubectl
+          kubectl config set-cluster "$CLUSTER" --server="$RDEI_SERVER" --insecure-skip-tls-verify=true
+          kubectl config set-credentials "$CLUSTER" --token="$RDEI_K8S_TOKEN"
+          kubectl config set-context "$CLUSTER" --cluster="$CLUSTER" --namespace="$RDEI_NAMESPACE" --user="$CLUSTER"
+          kubectl config use-context "$CLUSTER"
+      - name: Delete blue deployment when not active
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_value=$(kubectl describe svc "xap-pap-${ENVIRONMENT}-clusterip" | grep -i selector | awk '{print $2}' | cut -d'=' -f2 | cut -d'-' -f3)
+          if [ "$current_value" = "blue" ]; then
+            echo "Traffic is routing to blue. Cannot delete blue deployment."
+            exit 1
+          fi
+          kubectl delete deployment "xap-pap-blue-${ENVIRONMENT}"
+
+  delete-green:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'delete-green'
+    runs-on: comcast-ubuntu-latest
+    env:
+      RDEI_SERVER: ${{ vars.RDEI_SERVER }}
+      RDEI_NAMESPACE: ${{ vars.RDEI_NAMESPACE }}
+      CLUSTER: ${{ vars.CLUSTER }}
+      ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+      RDEI_K8S_TOKEN: ${{ secrets.RDEI_K8S_TOKEN }}
+    steps:
+      - name: Install and configure kubectl
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x ./kubectl
+          sudo mv ./kubectl /usr/local/bin/kubectl
+          kubectl config set-cluster "$CLUSTER" --server="$RDEI_SERVER" --insecure-skip-tls-verify=true
+          kubectl config set-credentials "$CLUSTER" --token="$RDEI_K8S_TOKEN"
+          kubectl config set-context "$CLUSTER" --cluster="$CLUSTER" --namespace="$RDEI_NAMESPACE" --user="$CLUSTER"
+          kubectl config use-context "$CLUSTER"
+      - name: Delete green deployment when not active
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_value=$(kubectl describe svc "xap-pap-${ENVIRONMENT}-clusterip" | grep -i selector | awk '{print $2}' | cut -d'=' -f2 | cut -d'-' -f3)
+          if [ "$current_value" = "green" ]; then
+            echo "Traffic is routing to green. Cannot delete green deployment."
+            exit 1
+          fi
+          kubectl delete deployment "xap-pap-green-${ENVIRONMENT}"
