@@ -57,9 +57,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          BRANCH="${{ github.event.client_payload.branch || inputs.branch || github.ref_name }}" #github.ref_name usually if repo_dispatch is not provided branch input, then it will take branch as workflow_dispatch input, as develop branch
-          REGION_INPUT="${{ github.event.client_payload.region || inputs.region || 'hillsboro' }}"   #if repo_dispatch is not provided region input, then it will take region as workflow_dispatch input, as hillsboro 
-          TAG_INPUT="${{ inputs.tag }}"
+
+          BRANCH="${{ github.event.client_payload.branch || inputs.branch || github.ref_name }}"
+          REGION_INPUT="${{ github.event.client_payload.region || inputs.region || 'hillsboro' }}"  
           SOURCE_REF="$BRANCH"
 
           # Tag is allowed only for main branch.
