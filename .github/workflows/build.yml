@@ -20,7 +20,7 @@ on:
           - hillsboro
           - ashburn
       tag:
-        description: Optional release tag (example: v1.2.3). Use only with branch=main #if you provide a tag then branch must be main.
+        description: Optional release tag (example: v1.2.3). Use only with branch=main
         required: false
         type: string
         default: ''
