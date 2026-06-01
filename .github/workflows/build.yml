@@ -112,9 +112,6 @@ jobs:
           echo "ENVIRONMENT=$ENVIRONMENT" >> "$GITHUB_ENV"
           echo "CRED_ENV=$CRED_ENV" >> "$GITHUB_ENV"
           echo "RDEI_ENVIRONMENT=$RDEI_ENVIRONMENT" >> "$GITHUB_ENV"
-          echo "RDEI_NAMESPACE=$RDEI_NAMESPACE" >> "$GITHUB_ENV"
-          echo "GSLB_DNS=$GSLB_DNS" >> "$GITHUB_ENV"
-          echo "SOURCE_REF=$SOURCE_REF" >> "$GITHUB_ENV"
 
 
       - name: Checkout repository
