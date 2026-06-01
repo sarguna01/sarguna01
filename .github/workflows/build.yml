@@ -1,5 +1,4 @@
 name: Build Deploy
-
 on:
   workflow_dispatch:
     inputs:
@@ -33,3 +32,21 @@ on:
           - delete-green
   repository_dispatch:
     types: [pap-build-deploy]
+
+env:
+  SLACK_CHANNEL: xap-slack-notifications
+
+jobs:
+  sarguna:
+    name: runnertesting
+    if: >-
+      github.event_name == 'repository_dispatch' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: self-hosted 
+    env:
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+    steps:
+      - name: Resolve values from branch and region
+        shell: bash
+        run: |
+          set -euo pipefail
